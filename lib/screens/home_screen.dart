@@ -16,6 +16,7 @@ import '../widgets/balance_summary_card.dart';
 import '../widgets/transaction_list_item.dart';
 import '../widgets/transaction_filter_buttons.dart';
 import 'add_income_screen.dart'; // Import the new screen
+import 'statistics_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   // Optional: Pass UserProfile if needed, or use state management later
@@ -28,7 +29,68 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  TransactionFilterType _currentFilter = TransactionFilterType.all;
+  TransactionFilterType _selectedFilter = TransactionFilterType.all;
+  ExpenseCategory? _selectedCategory;
+  TimePeriodFilter _selectedTimePeriod = TimePeriodFilter.all;
+
+  List<dynamic> _getFilteredTransactions(ExpenseProvider provider) {
+    List<dynamic> transactions = [];
+    DateTime? startDate;
+
+    // Calculate start date based on selected time period
+    switch (_selectedTimePeriod) {
+      case TimePeriodFilter.last3Days:
+        startDate = DateTime.now().subtract(const Duration(days: 3));
+        break;
+      case TimePeriodFilter.lastWeek:
+        startDate = DateTime.now().subtract(const Duration(days: 7));
+        break;
+      case TimePeriodFilter.last10Days:
+        startDate = DateTime.now().subtract(const Duration(days: 10));
+        break;
+      case TimePeriodFilter.last20Days:
+        startDate = DateTime.now().subtract(const Duration(days: 20));
+        break;
+      case TimePeriodFilter.all:
+        // For "all", we'll only show transactions from the current month
+        startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
+        break;
+    }
+
+    switch (_selectedFilter) {
+      case TransactionFilterType.all:
+        transactions = [...provider.expenses, ...provider.incomes];
+        break;
+      case TransactionFilterType.income:
+        transactions = [...provider.incomes];
+        break;
+      case TransactionFilterType.expense:
+        transactions = [...provider.expenses];
+        if (_selectedCategory != null) {
+          transactions = transactions.where((expense) => 
+            expense.category == _selectedCategory
+          ).toList();
+        }
+        break;
+    }
+
+    // Apply date filter if startDate is set
+    if (startDate != null) {
+      transactions = transactions.where((transaction) {
+        final transactionDate = transaction is Expense ? transaction.date : transaction.date;
+        return transactionDate.isAfter(startDate!);
+      }).toList();
+    }
+
+    // Sort transactions by date (most recent first)
+    transactions.sort((a, b) {
+      final dateA = a is Expense ? a.date : a.date;
+      final dateB = b is Expense ? b.date : b.date;
+      return dateB.compareTo(dateA);
+    });
+
+    return transactions;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,88 +99,52 @@ class _HomeScreenState extends State<HomeScreen> {
     final textColor = isDarkMode ? Colors.white : Colors.black;
     final subtitleColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
     
-    return Consumer<ExpenseProvider>(
-      builder: (context, expenseProvider, child) {
-        // Get user data from provider
-        final userName = expenseProvider.userProfile?.name ?? "User";
-        final expenses = expenseProvider.expenses;
-        final monthlyIncome = expenseProvider.monthlyIncome;
-        final totalSpending = expenseProvider.totalSpending;
-        final spendingByCategory = expenseProvider.spendingByCategory;
-        final currencyCode = expenseProvider.currencyCode;
-        
-        // Budget management
-        final budgetGoal = expenseProvider.monthlyBudget; // Use monthly budget directly
-        
-        final budgetPercentage = budgetGoal > 0 ? totalSpending / budgetGoal : 0.0;
-        final budgetRemaining = budgetGoal - totalSpending;
-        
-        // Calculate total balance
-        final totalBalance = monthlyIncome - totalSpending;
-        
-        // Filter expenses based on current filter
-        final List<Expense> filteredExpenses;
-        final List<Income> filteredIncomes;
-        
-        switch (_currentFilter) {
-          case TransactionFilterType.income:
-            filteredExpenses = [];
-            filteredIncomes = List.from(expenseProvider.incomes);
-            // Sort by date (most recent first)
-            filteredIncomes.sort((a, b) => b.date.compareTo(a.date));
-            break;
-          case TransactionFilterType.expense:
-            filteredExpenses = List.from(expenses);
-            filteredIncomes = [];
-            break;
-          case TransactionFilterType.all:
-          default:
-            filteredExpenses = List.from(expenses);
-            filteredIncomes = List.from(expenseProvider.incomes);
-            break;
-        }
-        
-        // Sort expenses by date (most recent first)
-        filteredExpenses.sort((a, b) => b.date.compareTo(a.date));
-        
-        return Scaffold(
-          backgroundColor: backgroundColor,
-          appBar: AppBar(
-            title: Text(
-              'Home',
-              style: TextStyle(
-                fontWeight: FontWeight.bold, 
-                fontSize: 32,
-                color: textColor,
-              ),
-            ),
-            backgroundColor: backgroundColor,
-            elevation: 0,
-            toolbarHeight: 100,
-            centerTitle: false,
-            titleSpacing: 24,
-            actions: [
-              // Set Budget Button
-              IconButton(
-                icon: Icon(
-                  Icons.calculate_outlined,
-                  color: textColor,
-                  size: 26,
-                ),
-                onPressed: () {
-                  _showBudgetDialog(context, expenseProvider);
-                },
-              ),
-              const SizedBox(width: 8),
-            ],
+    return Scaffold(
+      backgroundColor: backgroundColor,
+      appBar: AppBar(
+        title: Text(
+          'Home',
+          style: TextStyle(
+            fontWeight: FontWeight.bold, 
+            fontSize: 32,
+            color: textColor,
           ),
-          body: expenseProvider.isLoading 
-            ? Center(
-                child: CircularProgressIndicator(
-                  color: isDarkMode ? Colors.white : Colors.black,
-                ),
-              )
-            : RefreshIndicator(
+        ),
+        backgroundColor: backgroundColor,
+        elevation: 0,
+        toolbarHeight: 100,
+        centerTitle: false,
+        titleSpacing: 24,
+        actions: const [
+          SizedBox(width: 8),
+        ],
+      ),
+      body: Selector<ExpenseProvider, bool>(
+        selector: (_, provider) => provider.isLoading,
+        builder: (context, isLoading, child) {
+          if (isLoading) {
+            return Center(
+              child: CircularProgressIndicator(
+                color: isDarkMode ? Colors.white : Colors.black,
+              ),
+            );
+          }
+          
+          return Consumer<ExpenseProvider>(
+            builder: (context, expenseProvider, child) {
+              // Get user data from provider
+              final userName = expenseProvider.userProfile?.name ?? "User";
+              final filteredTransactions = _getFilteredTransactions(expenseProvider);
+              
+              // Budget management
+              final budgetGoal = expenseProvider.monthlyBudget;
+              final budgetPercentage = budgetGoal > 0 ? expenseProvider.totalSpending / budgetGoal : 0.0;
+              final budgetRemaining = budgetGoal - expenseProvider.totalSpending;
+              
+              // Calculate total balance
+              final totalBalance = expenseProvider.monthlyIncome - expenseProvider.totalSpending;
+              
+              return RefreshIndicator(
                 onRefresh: () => expenseProvider.initialize(),
                 color: isDarkMode ? Colors.white : Colors.black,
                 backgroundColor: isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
@@ -131,57 +157,39 @@ class _HomeScreenState extends State<HomeScreen> {
                       SizedBox(
                         width: double.infinity,
                         child: BalanceSummaryCard(
-                          totalBalance: expenseProvider.remainingBudget, // Change to remaining budget
-                          income: monthlyIncome + expenseProvider.additionalIncome, // Include additional income
-                          expense: totalSpending,
-                          currencyCode: currencyCode,
+                          totalBalance: expenseProvider.remainingBudget,
+                          income: expenseProvider.monthlyIncome + expenseProvider.additionalIncome,
+                          expense: expenseProvider.totalSpending,
+                          currencyCode: expenseProvider.currencyCode,
                         ),
                       ),
                       const SizedBox(height: 24),
                       
-                      // Information about recurring income
-                      if (expenseProvider.userProfile != null) 
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-                          child: Center(
-                            child: Text(
-                              'Monthly income of ${getCurrencySymbol(currencyCode)}${NumberFormat.decimalPattern().format(monthlyIncome)} on ${expenseProvider.recurringIncomeDateFormatted}',
-                              style: TextStyle(
-                                color: subtitleColor,
-                                fontSize: 14,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                      
-                      const SizedBox(height: 16),
-                      
-                      // Filter Buttons and See All in one row
+                      // Filter Buttons
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: TransactionFilterButtons(
-                                selectedFilter: _currentFilter,
-                                onFilterChanged: (filter) {
-                                  setState(() {
-                                    _currentFilter = filter;
-                                  });
-                                },
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                // TODO: Navigate to all transactions
-                              },
-                              style: TextButton.styleFrom(
-                                foregroundColor: textColor,
-                              ),
-                              child: const Text('See All'),
-                            ),
-                          ],
+                        child: TransactionFilterButtons(
+                          selectedFilter: _selectedFilter,
+                          selectedCategory: _selectedCategory,
+                          selectedTimePeriod: _selectedTimePeriod,
+                          onFilterChanged: (filter) {
+                            setState(() {
+                              _selectedFilter = filter;
+                              if (filter != TransactionFilterType.expense) {
+                                _selectedCategory = null;
+                              }
+                            });
+                          },
+                          onCategoryChanged: (category) {
+                            setState(() {
+                              _selectedCategory = category;
+                            });
+                          },
+                          onTimePeriodChanged: (period) {
+                            setState(() {
+                              _selectedTimePeriod = period;
+                            });
+                          },
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -200,259 +208,82 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 12),
                       
-                      // Show empty state for income filter
-                      if (filteredExpenses.isEmpty && filteredIncomes.isEmpty && _currentFilter == TransactionFilterType.all)
+                      // Transactions List
+                      if (filteredTransactions.isEmpty)
                         Center(
                           child: Padding(
-                            padding: const EdgeInsets.all(24.0),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.account_balance_wallet_outlined,
-                                  size: 48,
-                                  color: subtitleColor,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'No transactions recorded yet',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500,
-                                    color: subtitleColor,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      // Show income list when income filter is selected
-                      else if (_currentFilter == TransactionFilterType.income)
-                        filteredIncomes.isEmpty 
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(24.0),
-                              child: Column(
-                                children: [
-                                  Icon(
-                                    Icons.account_balance_wallet_outlined,
-                                    size: 48,
-                                    color: subtitleColor,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'No income recorded yet',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500,
-                                      color: subtitleColor,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Tap + to add your first income',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: subtitleColor,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
+                            padding: const EdgeInsets.symmetric(vertical: 32.0),
+                            child: Text(
+                              'No transactions found',
+                              style: TextStyle(
+                                color: isDarkMode ? Colors.white70 : Colors.black54,
+                                fontSize: 16,
                               ),
                             ),
-                          )
-                        : ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: filteredIncomes.length,
-                            separatorBuilder: (context, index) => Divider(
-                              height: 1,
-                              color: isDarkMode ? Colors.grey[800] : Colors.grey[300],
-                            ),
-                            itemBuilder: (context, index) {
-                              final income = filteredIncomes[index];
-                              return ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: Colors.green.withOpacity(0.2),
-                                  child: Icon(Icons.trending_up, color: Colors.green),
-                                ),
-                                title: Text(income.source),
-                                subtitle: Text(DateFormat('MMM dd, yyyy').format(income.date)),
-                                trailing: Text(
-                                  '${getCurrencySymbol(currencyCode)}${NumberFormat.decimalPattern().format(income.amount)}',
-                                  style: TextStyle(
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                onLongPress: () {
-                                  _confirmDeleteIncome(context, expenseProvider, income);
-                                },
-                              );
-                            },
-                          )
-                      // Show empty state for expense filter  
-                      else if (filteredExpenses.isEmpty && _currentFilter == TransactionFilterType.expense)
-                        Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24.0),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.receipt_long_outlined,
-                                  size: 48,
-                                  color: subtitleColor,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'No expenses recorded yet',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500,
-                                    color: subtitleColor,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Tap + to add your first expense',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: subtitleColor,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                            ),
                           ),
                         )
-                      // Show transaction list  
                       else
-                        Column(
-                          children: [
-                            // Display expenses
-                            if (filteredExpenses.isNotEmpty)
-                              ListView.separated(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: filteredExpenses.length,
-                                separatorBuilder: (context, index) => Divider(
-                                  height: 1,
-                                  color: isDarkMode ? Colors.grey[800] : Colors.grey[300],
-                                ),
-                                itemBuilder: (context, index) {
-                                  final expense = filteredExpenses[index];
-                                  return Dismissible(
-                                    key: Key(expense.id),
-                                    background: Container(
-                                      alignment: Alignment.centerRight,
-                                      color: Colors.red.shade400,
-                                      padding: const EdgeInsets.only(right: 20.0),
-                                      child: const Icon(Icons.delete_outline, color: Colors.white),
-                                    ),
-                                    direction: DismissDirection.endToStart,
-                                    confirmDismiss: (direction) => _confirmDelete(context),
-                                    onDismissed: (direction) {
-                                      expenseProvider.deleteExpense(expense.id);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('${expense.description} deleted'),
-                                          backgroundColor: isDarkMode ? Colors.grey[800] : Colors.grey[900],
-                                        ),
-                                      );
-                                    },
-                                    child: TransactionListItem(
-                                      expense: expense,
-                                      currencyCode: currencyCode,
-                                      onTap: () {
-                                        // TODO: Navigate to expense details
-                                      },
-                                    ),
-                                  );
-                                },
-                              ),
-                            
-                            // Display incomes for All filter
-                            if (_currentFilter == TransactionFilterType.all && filteredIncomes.isNotEmpty)
-                              ListView.separated(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: filteredIncomes.length,
-                                separatorBuilder: (context, index) => Divider(
-                                  height: 1,
-                                  color: isDarkMode ? Colors.grey[800] : Colors.grey[300],
-                                ),
-                                itemBuilder: (context, index) {
-                                  final income = filteredIncomes[index];
-                                  return ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: Colors.green.withOpacity(0.2),
-                                      child: Icon(Icons.trending_up, color: Colors.green),
-                                    ),
-                                    title: Text(income.source),
-                                    subtitle: Text(DateFormat('MMM dd').format(income.date)),
-                                    trailing: Text(
-                                      '${getCurrencySymbol(currencyCode)}${NumberFormat.decimalPattern().format(income.amount)}',
-                                      style: TextStyle(
-                                        color: Colors.green,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    onLongPress: () {
-                                      _confirmDeleteIncome(context, expenseProvider, income);
-                                    },
-                                  );
-                                },
-                              ),
-                          ],
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          padding: const EdgeInsets.only(top: 8),
+                          itemCount: filteredTransactions.length,
+                          itemBuilder: (context, index) {
+                            final transaction = filteredTransactions[index];
+                            return TransactionListItem(
+                              transaction: transaction,
+                              isDarkMode: isDarkMode,
+                              onDelete: () async {
+                                if (transaction is Expense) {
+                                  await expenseProvider.deleteExpense(transaction.id);
+                                } else if (transaction is Income) {
+                                  await expenseProvider.deleteIncome(transaction.id);
+                                }
+                              },
+                            );
+                          },
                         ),
-                      
-                      // Add some bottom padding
-                      const SizedBox(height: 80),
                     ],
                   ),
                 ),
-              ),
-          floatingActionButton: SpeedDial(
-            icon: Icons.add,
-            activeIcon: Icons.close,
-            backgroundColor: Colors.black,
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: SpeedDial(
+        icon: Icons.add,
+        activeIcon: Icons.close,
+        backgroundColor: isDarkMode ? Colors.white : Colors.black,
+        foregroundColor: isDarkMode ? Colors.black : Colors.white,
+        activeBackgroundColor: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+        activeForegroundColor: isDarkMode ? Colors.white : Colors.black,
+        spacing: 3,
+        childPadding: const EdgeInsets.all(5),
+        spaceBetweenChildren: 4,
+        children: [
+          SpeedDialChild(
+            child: const Icon(Icons.trending_up),
+            backgroundColor: Colors.green,
             foregroundColor: Colors.white,
-            elevation: 2,
-            shape: const CircleBorder(),
-            overlayOpacity: 0.4,
-            spacing: 12,
-            spaceBetweenChildren: 12,
-            children: [
-              SpeedDialChild(
-                child: const Icon(Icons.trending_up),
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                label: 'Add Income',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const AddIncomeScreen()),
-                  );
-                },
-              ),
-              SpeedDialChild(
-                child: const Icon(Icons.trending_down),
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                label: 'Report Expense',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const AddExpenseScreen()),
-                  );
-                },
-              ),
-            ],
+            label: 'Add Income',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const AddIncomeScreen()),
+            ),
           ),
-        );
-      },
+          SpeedDialChild(
+            child: const Icon(Icons.trending_down),
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+            label: 'Add Expense',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const AddExpenseScreen()),
+            ),
+          ),
+        ],
+      ),
     );
   }
   
@@ -560,29 +391,28 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
   
-  Future<bool?> _confirmDelete(BuildContext context) {
+  Future<void> _confirmDeleteExpense(BuildContext context, ExpenseProvider provider, Expense expense) async {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    
-    return showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
         title: Text(
-          'Delete Transaction',
+          'Delete Expense?',
           style: TextStyle(
             color: isDarkMode ? Colors.white : Colors.black,
             fontWeight: FontWeight.bold,
           ),
         ),
         content: Text(
-          'Are you sure you want to delete this transaction?',
+          'Are you sure you want to delete this expense?\n\n${expense.description}\n£${NumberFormat.decimalPattern().format(expense.amount)}',
           style: TextStyle(
             color: isDarkMode ? Colors.grey[300] : Colors.grey[800],
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.pop(context, false),
             child: Text(
               'CANCEL',
               style: TextStyle(
@@ -591,8 +421,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
               'DELETE',
               style: TextStyle(
                 color: Colors.red,
@@ -603,31 +433,42 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+
+    if (confirmed == true && context.mounted) {
+      final success = await provider.deleteExpense(expense.id);
+      if (success && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${expense.description} deleted'),
+            backgroundColor: isDarkMode ? Colors.grey[800] : Colors.grey[900],
+          ),
+        );
+      }
+    }
   }
-  
-  Future<void> _confirmDeleteIncome(BuildContext context, ExpenseProvider expenseProvider, Income income) async {
+
+  Future<void> _confirmDeleteIncome(BuildContext context, ExpenseProvider provider, Income income) async {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    
-    final shouldDelete = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
         title: Text(
-          'Delete Income',
+          'Delete Income?',
           style: TextStyle(
             color: isDarkMode ? Colors.white : Colors.black,
             fontWeight: FontWeight.bold,
           ),
         ),
         content: Text(
-          'Are you sure you want to delete this income?',
+          'Are you sure you want to delete this income?\n\n${income.source}\n£${NumberFormat.decimalPattern().format(income.amount)}',
           style: TextStyle(
             color: isDarkMode ? Colors.grey[300] : Colors.grey[800],
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.pop(context, false),
             child: Text(
               'CANCEL',
               style: TextStyle(
@@ -636,8 +477,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
               'DELETE',
               style: TextStyle(
                 color: Colors.red,
@@ -648,10 +489,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
-    
-    if (shouldDelete == true) {
-      final success = await expenseProvider.deleteIncome(income.id);
-      if (success && mounted) {
+
+    if (confirmed == true && context.mounted) {
+      final success = await provider.deleteIncome(income.id);
+      if (success && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('${income.source} deleted'),

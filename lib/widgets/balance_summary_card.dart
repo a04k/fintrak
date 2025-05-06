@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../screens/statistics_screen.dart';
 
 class BalanceSummaryCard extends StatelessWidget {
   final double totalBalance;
@@ -65,7 +66,7 @@ class BalanceSummaryCard extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                // Currency button
+                // Statistics button
                 Container(
                   width: 44,
                   height: 44,
@@ -73,15 +74,17 @@ class BalanceSummaryCard extends StatelessWidget {
                     color: isDarkMode ? Colors.grey[800] : Colors.grey[200],
                     shape: BoxShape.circle,
                   ),
-                  child: Center(
-                    child: Text(
-                      currencySymbol,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: textColor,
-                      ),
+                  child: IconButton(
+                    icon: Icon(
+                      Icons.bar_chart,
+                      color: textColor,
+                      size: 20,
                     ),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const StatisticsScreen()),
+                    ),
+                    tooltip: 'Statistics',
                   ),
                 ),
               ],

@@ -4,7 +4,6 @@ import '../models/expense.dart';
 import '../models/category.dart';
 import '../models/income.dart';
 import 'storage_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
 class ExpenseProvider with ChangeNotifier {
@@ -12,25 +11,23 @@ class ExpenseProvider with ChangeNotifier {
   UserProfile? _userProfile;
   List<Expense> _expenses = [];
   List<Income> _incomes = [];
-  final StorageService _storageService = StorageService();
+  final StorageService _storageService;
   bool _isLoading = true;
   String? _error;
   String _userName = '';
-  final SharedPreferences _prefs;
-  // Add flag to prevent notifications during initialization
-  bool _initializing = false;
+  int _loadingOperations = 0;
+  bool _isInitialized = false;
 
-  ExpenseProvider(this._prefs) {
-    _loadData();
-  }
+  ExpenseProvider(this._storageService);
 
   // Getters for accessing state
   UserProfile? get userProfile => _userProfile;
-  List<Expense> get expenses => [..._expenses]; // Return a copy to avoid direct modification
-  List<Income> get incomes => [..._incomes]; // Return a copy to avoid direct modification
-  bool get isLoading => _isLoading;
+  List<Expense> get expenses => [..._expenses];
+  List<Income> get incomes => [..._incomes];
+  bool get isLoading => _loadingOperations > 0;
   String? get error => _error;
   bool get isProfileSet => _userName.isNotEmpty;
+  bool get isInitialized => _isInitialized;
   
   // Derived data
   double get monthlyIncome => _userProfile?.monthlyIncome ?? 0.0;
@@ -72,23 +69,87 @@ class ExpenseProvider with ChangeNotifier {
   double get remainingBudget => 
       monthlyBudget - totalSpending + additionalIncome;
 
+  // Get spending by category for a specific time period
+  Map<ExpenseCategory, double> getSpendingByCategory({DateTime? startDate, DateTime? endDate}) {
+    final Map<ExpenseCategory, double> categorySpending = {};
+    
+    for (var expense in _expenses) {
+      if ((startDate == null || expense.date.isAfter(startDate)) &&
+          (endDate == null || expense.date.isBefore(endDate.add(const Duration(days: 1))))) {
+        categorySpending[expense.category] = (categorySpending[expense.category] ?? 0) + expense.amount;
+      }
+    }
+    
+    return categorySpending;
+  }
+
+  // Get total spending for a specific time period
+  double getTotalSpending({DateTime? startDate, DateTime? endDate}) {
+    return _expenses
+        .where((expense) =>
+            (startDate == null || expense.date.isAfter(startDate)) &&
+            (endDate == null || expense.date.isBefore(endDate.add(const Duration(days: 1)))))
+        .fold(0, (sum, expense) => sum + expense.amount);
+  }
+
+  // Get total income for a specific time period
+  double getTotalIncome({DateTime? startDate, DateTime? endDate}) {
+    return _incomes
+        .where((income) =>
+            (startDate == null || income.date.isAfter(startDate)) &&
+            (endDate == null || income.date.isBefore(endDate.add(const Duration(days: 1)))))
+        .fold(0, (sum, income) => sum + income.amount);
+  }
+
+  // Get daily average spending for a specific time period
+  double getDailyAverageSpending({DateTime? startDate, DateTime? endDate}) {
+    if (_expenses.isEmpty) return 0;
+
+    startDate ??= _expenses.map((e) => e.date).reduce((a, b) => a.isBefore(b) ? a : b);
+    endDate ??= DateTime.now();
+
+    final totalSpending = getTotalSpending(startDate: startDate, endDate: endDate);
+    final days = endDate.difference(startDate).inDays + 1;
+    
+    return totalSpending / days;
+  }
+
+  // Get monthly spending history
+  List<Map<String, dynamic>> getMonthlySpendingHistory({int numberOfMonths = 12}) {
+    final List<Map<String, dynamic>> history = [];
+    final now = DateTime.now();
+    
+    for (int i = 0; i < numberOfMonths; i++) {
+      final startDate = DateTime(now.year, now.month - i, 1);
+      final endDate = DateTime(now.year, now.month - i + 1, 0);
+      
+      history.add({
+        'month': DateFormat('MMMM yyyy').format(startDate),
+        'spending': getTotalSpending(startDate: startDate, endDate: endDate),
+        'income': getTotalIncome(startDate: startDate, endDate: endDate),
+        'categories': getSpendingByCategory(startDate: startDate, endDate: endDate),
+      });
+    }
+    
+    return history;
+  }
+
   // --- Methods to modify state ---
 
   // Initialize - load data from storage
   Future<void> initialize() async {
-    _initializing = true; // Set flag before loading data
+    if (_isInitialized) return;
     await _loadData();
-    _initializing = false; // Reset flag after loading
-    notifyListeners(); // Notify once after initialization complete
+    _isInitialized = true;
+    notifyListeners();
   }
   
   Future<void> _loadData() async {
     _setLoading(true);
     try {
-      _userName = _prefs.getString('user_name') ?? '';
-      
       // Load user profile
       _userProfile = await _storageService.loadUserProfile();
+      _userName = _userProfile?.name ?? '';
       
       // Load expenses
       _expenses = await _storageService.loadExpenses();
@@ -112,6 +173,7 @@ class ExpenseProvider with ChangeNotifier {
       final success = await _storageService.saveUserProfile(profile);
       if (success) {
         _userProfile = profile;
+        _userName = profile.name;
         _error = null;
         notifyListeners();
       }
@@ -151,13 +213,63 @@ class ExpenseProvider with ChangeNotifier {
     try {
       final success = await _storageService.addIncome(income);
       if (success) {
-        _incomes.add(income);
+        _incomes = [..._incomes, income];
         _error = null;
         notifyListeners();
       }
       return success;
     } catch (e) {
       _error = 'Failed to add income: $e';
+      print(_error);
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+  
+  // Update an expense
+  Future<bool> updateExpense(Expense updatedExpense) async {
+    _setLoading(true);
+    try {
+      final index = _expenses.indexWhere((e) => e.id == updatedExpense.id);
+      if (index != -1) {
+        // Save all expenses with the updated one
+        _expenses[index] = updatedExpense;
+        final success = await _storageService.saveExpenses(_expenses);
+        if (success) {
+          _error = null;
+          notifyListeners();
+        }
+        return success;
+      }
+      return false;
+    } catch (e) {
+      _error = 'Failed to update expense: $e';
+      print(_error);
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+  
+  // Update an income
+  Future<bool> updateIncome(Income updatedIncome) async {
+    _setLoading(true);
+    try {
+      final index = _incomes.indexWhere((i) => i.id == updatedIncome.id);
+      if (index != -1) {
+        // Save all incomes with the updated one
+        _incomes[index] = updatedIncome;
+        final success = await _storageService.saveIncomes(_incomes);
+        if (success) {
+          _error = null;
+          notifyListeners();
+        }
+        return success;
+      }
+      return false;
+    } catch (e) {
+      _error = 'Failed to update income: $e';
       print(_error);
       return false;
     } finally {
@@ -270,7 +382,6 @@ class ExpenseProvider with ChangeNotifier {
         _expenses = [];
         _incomes = [];
         _userName = '';
-        _prefs.remove('user_name');
         _error = null;
         notifyListeners();
       }
@@ -284,19 +395,19 @@ class ExpenseProvider with ChangeNotifier {
     }
   }
   
-  // Helper method to update loading state
   void _setLoading(bool loading) {
-    _isLoading = loading;
-    // Only notify if not initializing
-    if (!_initializing) {
-      notifyListeners();
+    if (loading) {
+      _loadingOperations++;
+    } else {
+      _loadingOperations--;
     }
+    if (_loadingOperations < 0) _loadingOperations = 0;
+    notifyListeners();
   }
 
   void setUserName(String name) {
     print("ExpenseProvider: Setting user name to: $name");
     _userName = name;
-    _prefs.setString('user_name', name);
     print("ExpenseProvider: User name set, notifying listeners");
     notifyListeners();
   }

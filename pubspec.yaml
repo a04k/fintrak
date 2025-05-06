@@ -38,10 +38,17 @@ dependencies:
   provider: ^6.1.4
   shared_preferences: ^2.5.3
   flutter_speed_dial: ^7.0.0
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  google_generative_ai: ^0.2.0
+  image_picker: ^1.0.7
+  fl_chart: ^0.66.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.8
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

@@ -1,101 +1,180 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/expense.dart';
+import '../models/income.dart';
 import '../models/category.dart';
+import '../screens/transaction_details_screen.dart';
 
 class TransactionListItem extends StatelessWidget {
-  final Expense expense;
-  final String currencyCode;
-  final VoidCallback? onTap;
-  
+  final dynamic transaction; // Can be either Expense or Income
+  final bool isDarkMode;
+  final Function() onDelete;
+
   const TransactionListItem({
-    super.key, 
-    required this.expense,
-    required this.currencyCode,
-    this.onTap,
+    super.key,
+    required this.transaction,
+    required this.isDarkMode,
+    required this.onDelete,
   });
-  
-  // Helper method to get currency symbol
-  String getCurrencySymbol(String code) {
-    return '£';
+
+  String _getCategoryName(dynamic transaction) {
+    if (transaction is Expense) {
+      final category = transaction.category;
+      if (category is ExpenseCategory) {
+        switch (category) {
+          case ExpenseCategory.entertainment:
+            return 'Entertainment';
+          case ExpenseCategory.food:
+            return 'Food';
+          case ExpenseCategory.transportation:
+            return 'Transportation';
+          case ExpenseCategory.utilities:
+            return 'Utilities';
+          case ExpenseCategory.shopping:
+            return 'Shopping';
+          case ExpenseCategory.health:
+            return 'Health/Emergency';
+          case ExpenseCategory.education:
+            return 'Education';
+          case ExpenseCategory.other:
+            return 'Other';
+        }
+      }
+    }
+    return 'Income';
   }
-  
+
   @override
   Widget build(BuildContext context) {
-    // Format date
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final dateFormat = DateFormat('yyyy-MM-dd');
-    final textColor = isDarkMode ? Colors.white : Colors.black87;
-    final subtitleColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
-    final currencySymbol = getCurrencySymbol(currencyCode);
-    
-    // Color based on transaction type
-    final isIncome = expense.description.toLowerCase().contains('salary') || 
-                     expense.description.toLowerCase().contains('freelance');
-    final amountColor = isIncome ? Colors.green : Colors.red;
-    final amountPrefix = isIncome ? '' : '-';
-    
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14.0, horizontal: 4.0),
-        child: Row(
-          children: [
-            // Category Icon
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: isIncome ? Colors.green.withOpacity(0.2) : expense.category.color.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
+    final isExpense = transaction is Expense;
+    final amount = isExpense ? transaction.amount : transaction.amount;
+    final date = isExpense ? transaction.date : transaction.date;
+    final description = isExpense ? transaction.description : transaction.source;
+    final category = _getCategoryName(transaction);
+
+    return Dismissible(
+      key: Key(transaction.id),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (direction) async {
+        return await showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              backgroundColor: isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
+              title: Text(
+                'Delete ${isExpense ? 'Expense' : 'Income'}?',
+                style: TextStyle(
+                  color: isDarkMode ? Colors.white : Colors.black,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              child: Icon(
-                isIncome 
-                  ? Icons.account_balance_wallet_outlined 
-                  : expense.category.icon,
-                color: isIncome ? Colors.green : expense.category.color,
-                size: 20,
+              content: Text(
+                'Are you sure you want to delete this ${isExpense ? 'expense' : 'income'}?\n\n$description\n£${NumberFormat.decimalPattern().format(amount)}',
+                style: TextStyle(
+                  color: isDarkMode ? Colors.grey[300] : Colors.grey[800],
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            
-            // Description and Date
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    expense.description,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(
+                    'CANCEL',
                     style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                      color: textColor,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    dateFormat.format(expense.date),
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: subtitleColor,
+                      color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
                     ),
                   ),
-                ],
-              ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text(
+                    'DELETE',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+      onDismissed: (direction) => onDelete(),
+      background: Container(
+        color: Colors.red,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16.0),
+        child: const Icon(
+          Icons.delete_outline,
+          color: Colors.white,
+        ),
+      ),
+      child: Card(
+        margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          leading: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: (isExpense ? Colors.red : Colors.green).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
             ),
-            
-            // Amount
-            Text(
-              '$amountPrefix$currencySymbol${NumberFormat.decimalPattern().format(expense.amount)}',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: amountColor,
-              ),
+            child: Icon(
+              isExpense ? Icons.trending_down : Icons.trending_up,
+              color: isExpense ? Colors.red : Colors.green,
+              size: 16,
             ),
-          ],
+          ),
+          title: Text(
+            description,
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+              color: isDarkMode ? Colors.white : Colors.black,
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                DateFormat('MMM dd').format(date),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                category,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+          trailing: Text(
+            '${isExpense ? '-' : '+'}£${NumberFormat.decimalPattern().format(amount)}',
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+              color: isExpense ? Colors.red : Colors.green,
+            ),
+          ),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => TransactionDetailsScreen(
+                  transaction: transaction,
+                  onEdit: () {
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

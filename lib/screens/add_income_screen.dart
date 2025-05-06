@@ -6,7 +6,14 @@ import '../models/income.dart';
 import '../services/expense_provider.dart';
 
 class AddIncomeScreen extends StatefulWidget {
-  const AddIncomeScreen({super.key});
+  final Income? income;
+  final bool isEditing;
+
+  const AddIncomeScreen({
+    super.key,
+    this.income,
+    this.isEditing = false,
+  });
 
   @override
   State<AddIncomeScreen> createState() => _AddIncomeScreenState();
@@ -17,8 +24,20 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
   final _sourceController = TextEditingController();
   final _amountController = TextEditingController();
   final _notesController = TextEditingController();
+  bool _isSubmitting = false;
   
   DateTime _selectedDate = DateTime.now();
+  
+  @override
+  void initState() {
+    super.initState();
+    if (widget.income != null) {
+      _sourceController.text = widget.income!.source;
+      _amountController.text = widget.income!.amount.toString();
+      _notesController.text = widget.income!.notes ?? '';
+      _selectedDate = widget.income!.date;
+    }
+  }
   
   @override
   void dispose() {
@@ -30,81 +49,72 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
   
   // Format date for display
   String get formattedDate => DateFormat('MMMM d, yyyy').format(_selectedDate);
-
-  // Show date picker
+  
   Future<void> _selectDate(BuildContext context) async {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    
-    final DateTime? pickedDate = await showDatePicker(
+    final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(DateTime.now().year - 1),
+      firstDate: DateTime(2000),
       lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: isDarkMode 
-              ? const ColorScheme.dark(
-                  primary: Colors.white,
-                  onPrimary: Colors.black,
-                  surface: Color(0xFF2A2A2A),
-                  onSurface: Colors.white,
-                )
-              : const ColorScheme.light(
-                  primary: Colors.black,
-                  onPrimary: Colors.white,
-                  surface: Colors.white,
-                  onSurface: Colors.black,
-                ),
-          ),
-          child: child!,
-        );
-      },
     );
-    
-    if (pickedDate != null && pickedDate != _selectedDate) {
+    if (picked != null && picked != _selectedDate) {
       setState(() {
-        _selectedDate = pickedDate;
+        _selectedDate = picked;
       });
     }
   }
   
   // Submit the form
   void _submitForm() async {
+    if (_isSubmitting) return; // Prevent double submission
+    
     if (_formKey.currentState!.validate()) {
-      // Get amount from text field
-      final amountText = _amountController.text.trim();
-      final amount = double.tryParse(amountText) ?? 0.0;
+      setState(() {
+        _isSubmitting = true;
+      });
       
-      // Create income object
-      final income = Income.create(
-        source: _sourceController.text.trim(),
-        amount: amount,
-        date: _selectedDate,
-        notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
-      );
-      
-      // Add income using provider
-      final expenseProvider = Provider.of<ExpenseProvider>(context, listen: false);
-      final success = await expenseProvider.addIncome(income);
-      
-      if (success) {
-        if (mounted) {
-          // Show success message and pop the screen
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Income added successfully')),
-          );
-          Navigator.of(context).pop();
+      try {
+        final income = Income(
+          id: widget.income?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+          source: _sourceController.text.trim(),
+          amount: double.parse(_amountController.text.trim()),
+          date: _selectedDate,
+          notes: _notesController.text.trim(),
+        );
+        
+        final provider = Provider.of<ExpenseProvider>(context, listen: false);
+        bool success;
+        
+        if (widget.isEditing) {
+          success = await provider.updateIncome(income);
+        } else {
+          success = await provider.addIncome(income);
         }
-      } else {
-        if (mounted) {
-          // Show error message
+        
+        if (success && mounted) {
+          Navigator.pop(context);
+        } else if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(expenseProvider.error ?? 'Failed to add income'),
+              content: Text(provider.error ?? 'Failed to save income'),
               backgroundColor: Colors.red,
             ),
           );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isSubmitting = false;
+          });
         }
       }
     }
@@ -113,182 +123,194 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDarkMode ? Colors.white : Colors.black;
     final backgroundColor = isDarkMode ? const Color(0xFF121212) : const Color(0xFFFAFAFA);
+    final textColor = isDarkMode ? Colors.white : Colors.black;
+    final subtitleColor = isDarkMode ? Colors.grey[400] : Colors.grey[600];
     
-    // Get currency code from provider
-    final currencyCode = Provider.of<ExpenseProvider>(context).currencyCode;
+    // Get currency code from provider without listening to changes
+    final currencyCode = Provider.of<ExpenseProvider>(context, listen: false).currencyCode;
+    final currencySymbol = '£';
     
-    // Get currency symbol - always returns £ now
-    String getCurrencySymbol(String code) {
-      return '£';
-    }
-    
-    final currencySymbol = getCurrencySymbol(currencyCode);
-    
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      appBar: AppBar(
-        title: Text(
-          'Add Income',
-          style: TextStyle(
-            color: textColor,
-            fontWeight: FontWeight.bold,
-            fontSize: 28,
-          ),
-        ),
+    return WillPopScope(
+      onWillPop: () async => !_isSubmitting,
+      child: Scaffold(
         backgroundColor: backgroundColor,
-        elevation: 0,
-        iconTheme: IconThemeData(color: textColor),
-        toolbarHeight: 100,
-      ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Source field
-              Text(
-                'Income Source', 
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: textColor,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _sourceController,
-                style: TextStyle(color: textColor),
-                decoration: InputDecoration(
-                  hintText: 'What is the source of this income?',
-                  prefixIcon: Icon(Icons.work_outline, color: isDarkMode ? Colors.grey[400] : Colors.grey[700]),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter a source';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              
-              // Amount field
-              Text(
-                'Amount', 
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: textColor,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _amountController,
-                style: TextStyle(color: textColor),
-                decoration: InputDecoration(
-                  hintText: '0.00',
-                  prefixIcon: Icon(Icons.attach_money_outlined, color: isDarkMode ? Colors.grey[400] : Colors.grey[700]),
-                  prefixText: '$currencySymbol ',
-                ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
-                ],
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter an amount';
-                  }
-                  final amount = double.tryParse(value);
-                  if (amount == null) {
-                    return 'Please enter a valid number';
-                  }
-                  if (amount <= 0) {
-                    return 'Amount must be greater than 0';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              
-              // Date selection
-              Text(
-                'Date',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: textColor,
-                ),
-              ),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: () => _selectDate(context),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  decoration: BoxDecoration(
-                    color: isDarkMode ? const Color(0xFF2A2A2A) : const Color(0xFFF5F5F5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.calendar_today_outlined,
-                        color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
-                        size: 20,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        formattedDate,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: textColor,
-                        ),
-                      ),
-                    ],
+        appBar: AppBar(
+          title: Text(
+            widget.isEditing ? 'Edit Income' : 'Add Income',
+            style: TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          backgroundColor: backgroundColor,
+          elevation: 0,
+          iconTheme: IconThemeData(color: textColor),
+          toolbarHeight: 100,
+        ),
+        body: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Source field
+                Text(
+                  'Income Source', 
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: textColor,
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              
-              // Notes field
-              Text(
-                'Notes (Optional)', 
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: textColor,
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _sourceController,
+                  style: TextStyle(color: textColor),
+                  enabled: !_isSubmitting,
+                  decoration: InputDecoration(
+                    hintText: 'What is the source of this income?',
+                    prefixIcon: Icon(Icons.work_outline, color: isDarkMode ? Colors.grey[400] : Colors.grey[700]),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter a source';
+                    }
+                    return null;
+                  },
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _notesController,
-                style: TextStyle(color: textColor),
-                decoration: InputDecoration(
-                  hintText: 'Add notes about this income',
-                  prefixIcon: Icon(Icons.note_outlined, color: isDarkMode ? Colors.grey[400] : Colors.grey[700]),
+                const SizedBox(height: 24),
+                
+                // Amount field
+                Text(
+                  'Amount', 
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: textColor,
+                  ),
                 ),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 40),
-              
-              // Submit button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _submitForm,
-                  child: const Text(
-                    'Add Income',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _amountController,
+                  style: TextStyle(color: textColor),
+                  enabled: !_isSubmitting,
+                  decoration: InputDecoration(
+                    hintText: '0.00',
+                    prefixIcon: Icon(Icons.attach_money_outlined, color: isDarkMode ? Colors.grey[400] : Colors.grey[700]),
+                    prefixText: '$currencySymbol ',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                  ],
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter an amount';
+                    }
+                    final amount = double.tryParse(value);
+                    if (amount == null) {
+                      return 'Please enter a valid number';
+                    }
+                    if (amount <= 0) {
+                      return 'Amount must be greater than 0';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 24),
+                
+                // Date selection
+                Text(
+                  'Date',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: textColor,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                AbsorbPointer(
+                  absorbing: _isSubmitting,
+                  child: InkWell(
+                    onTap: () => _selectDate(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? const Color(0xFF2A2A2A) : const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today_outlined,
+                            color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            formattedDate,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: textColor,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 24),
+                
+                // Notes field
+                Text(
+                  'Notes (Optional)', 
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: textColor,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _notesController,
+                  style: TextStyle(color: textColor),
+                  enabled: !_isSubmitting,
+                  decoration: InputDecoration(
+                    hintText: 'Add notes about this income',
+                    prefixIcon: Icon(Icons.note_outlined, color: isDarkMode ? Colors.grey[400] : Colors.grey[700]),
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 40),
+                
+                // Submit button
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _isSubmitting ? null : _submitForm,
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Text(
+                            'Add Income',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

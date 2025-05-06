@@ -21,7 +21,7 @@ class BudgetProgressBar extends StatelessWidget {
     // Ensure income is not zero to avoid division errors
     final double safeIncome = monthlyIncome <= 0 ? 1.0 : monthlyIncome;
     // Currency formatter (adapt based on UserProfile later)
-    final currencyFormat = NumberFormat.simpleCurrency(locale: 'en_US'); // Placeholder locale
+    final currencyFormat = NumberFormat.simpleCurrency(locale: 'en_US'); 
 
     // Sort categories for consistent bar order (optional)
     final sortedCategories = spendingByCategory.keys.toList()
@@ -104,7 +104,7 @@ class BudgetProgressBar extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
             ),
             Text(
-              'Income: ${currencyFormat.format(safeIncome)}',
+              'Budget: ${currencyFormat.format(safeIncome)}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],

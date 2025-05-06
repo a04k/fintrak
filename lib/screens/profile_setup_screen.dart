@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/expense_provider.dart';
 import '../models/user_profile.dart';
+import '../screens/main_app_scaffold.dart';
 import 'package:intl/intl.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
@@ -99,9 +100,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       
       if (success && mounted) {
         print("Profile saved successfully, setting user name: ${userProfile.name}");
-        // Set user name so the app navigates to home screen
+        // Set user name and navigate to main app
         provider.setUserName(userProfile.name);
-        print("User name set, should navigate to MainAppScaffold now");
+        print("User name set, navigating to MainAppScaffold");
+        
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const MainAppScaffold()),
+            (route) => false,
+          );
+        }
       }
     } catch (e) {
       // Show error

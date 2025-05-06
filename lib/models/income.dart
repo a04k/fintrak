@@ -1,10 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 
+part 'income.g.dart';
+
+@HiveType(typeId: 2)
 class Income {
+  @HiveField(0)
   final String id;
+  
+  @HiveField(1)
   final String source;
+  
+  @HiveField(2)
   final double amount;
+  
+  @HiveField(3)
   final DateTime date;
+  
+  @HiveField(4)
   final String? notes;
 
   const Income({
@@ -50,12 +63,21 @@ class Income {
   );
 }
 
-// Define income sources/types (you can expand this)
+@HiveType(typeId: 3)
 enum IncomeSource {
+  @HiveField(0)
   salary,
+  
+  @HiveField(1)
   freelance,
+  
+  @HiveField(2)
   investment,
+  
+  @HiveField(3)
   gift,
+  
+  @HiveField(4)
   other,
 }
 

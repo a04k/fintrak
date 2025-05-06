@@ -1,9 +1,25 @@
+import 'package:hive/hive.dart';
+
+part 'user_profile.g.dart';
+
+@HiveType(typeId: 0)
 class UserProfile {
+  @HiveField(0)
   final String name;
+  
+  @HiveField(1)
   final double monthlyIncome;
+  
+  @HiveField(2)
   final String currency; // e.g., "EGP", "USD", "EUR"
+  
+  @HiveField(3)
   final DateTime recurringIncomeDate;  // New field for monthly income date
+  
+  @HiveField(4)
   final double monthlyBudget;  // New field for budget
+  
+  @HiveField(5)
   final String? savingGoal;  // New field for saving goal
 
   UserProfile({

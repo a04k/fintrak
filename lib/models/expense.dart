@@ -1,10 +1,23 @@
+import 'package:hive/hive.dart';
 import 'category.dart'; // Import the category enum
 
+part 'expense.g.dart';
+
+@HiveType(typeId: 1)
 class Expense {
+  @HiveField(0)
   final String id; // Unique ID for each expense
+  
+  @HiveField(1)
   final String description;
+  
+  @HiveField(2)
   final double amount;
+  
+  @HiveField(3)
   final ExpenseCategory category;
+  
+  @HiveField(4)
   final DateTime date;
   // You might add optional fields like notes, receipt image path etc.
 
