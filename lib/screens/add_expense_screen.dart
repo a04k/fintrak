@@ -4,10 +4,17 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/foundation.dart'; // add this import
+import 'dart:convert'; // add this import
+// For web, import dart:html
+// Only include this import when targeting web:
+import 'dart:html' as html;
 
 import '../models/category.dart';
 import '../models/expense.dart';
 import '../services/expense_provider.dart';
+import '../services/ai_service.dart';  // Add this import
 
 class AddExpenseScreen extends StatefulWidget {
   final Expense? expense;
@@ -69,25 +76,145 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
   }
   
-  Future<void> _getImage(ImageSource source) async {
+  Future<void> _processReceipt(File imageFile) async {
     try {
-      final pickedFile = await _picker.pickImage(
-        source: source,
-        imageQuality: 70,
-      );
+      setState(() {
+        _isSubmitting = true;
+      });
 
-      if (pickedFile != null) {
-        setState(() {
-          _receiptImage = File(pickedFile.path);
-        });
-        // TODO: Process the receipt image for text extraction
+      // Get AI service instance
+      final aiService = Provider.of<AIService>(context, listen: false);
+      
+      // Extract total from receipt
+      final total = await aiService.extractReceiptTotal(imageFile.path);
+      
+      if (total != null) {
+        // Create and add expense directly
+        final expense = Expense(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          description: 'Scanned Receipt',
+          amount: total,
+          date: DateTime.now(),
+          category: ExpenseCategory.shopping,
+        );
+
+        final expenseProvider = Provider.of<ExpenseProvider>(context, listen: false);
+        final success = await expenseProvider.addExpense(expense);
+
+        if (success && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Receipt processed and expense added')),
+          );
+          Navigator.of(context).pop(); // Return to home screen
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(expenseProvider.error ?? 'Failed to add expense'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not extract total from receipt'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
-      // Handle any errors
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to pick image')),
+          const SnackBar(
+            content: Text('Error processing receipt'),
+            backgroundColor: Colors.red,
+          ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _getImage(ImageSource source) async {
+    if (kIsWeb) {
+      // Use dart:html FileUploadInputElement for web
+      final uploadInput = html.FileUploadInputElement()..accept = 'image/*';
+      uploadInput.click();
+      uploadInput.onChange.listen((event) async {
+        final files = uploadInput.files;
+        if (files != null && files.isNotEmpty) {
+          final file = files.first;
+          final reader = html.FileReader();
+          reader.readAsArrayBuffer(file);
+          reader.onLoadEnd.listen((event) async {
+            final imageData = reader.result as Uint8List;
+            final base64Image = base64Encode(imageData);
+            final aiService = Provider.of<AIService>(context, listen: false);
+            final total = await aiService.extractReceiptTotalFromBase64(base64Image);
+            if (total != null) {
+              setState(() {
+                _amountController.text = total.toStringAsFixed(2);
+                _selectedCategory = ExpenseCategory.shopping;
+                _descriptionController.text = 'Scanned Receipt';
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Receipt processed and expense added')),
+              );
+              final expense = Expense(
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                description: 'Scanned Receipt',
+                amount: total,
+                date: DateTime.now(),
+                category: ExpenseCategory.shopping,
+              );
+              final expenseProvider = Provider.of<ExpenseProvider>(context, listen: false);
+              final success = await expenseProvider.addExpense(expense);
+              if(success && mounted){
+                Navigator.of(context).pop();
+              }
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Could not extract total from receipt'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          });
+        }
+      });
+    } else {
+      // Existing mobile implementation
+      try {
+        if (source == ImageSource.camera) {
+          final status = await Permission.camera.request();
+          if (status.isDenied) return;
+        }
+        final pickedFile = await _picker.pickImage(
+          source: source,
+          imageQuality: 70,
+        );
+
+        if (pickedFile != null) {
+          final imageFile = File(pickedFile.path);
+          await _processReceipt(imageFile);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to process image'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -138,7 +265,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         
         // Create expense object
         final expense = Expense(
-          id: widget.expense?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+          id: widget.expense?.id ?? DateTime.now().millisecondsSinceEpoch.toString(), // ay kalam
           description: _descriptionController.text.trim(),
           amount: amount,
           date: _selectedDate,

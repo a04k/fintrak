@@ -9,6 +9,8 @@ import 'services/theme_provider.dart';
 import 'screens/loading_screen.dart';
 import 'screens/profile_setup_screen.dart';
 import 'screens/main_app_scaffold.dart';
+import 'services/ai_service.dart'; // NEW: Import AIService
+import 'config/api_config.dart'; // NEW: Import API key from config
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,7 +19,13 @@ void main() async {
   final storageService = StorageService();
   await storageService.init();
   
-  runApp(MyApp(storageService: storageService));
+  // Wrap MyApp within a Provider for AIService using the API key from config
+  runApp(
+    Provider<AIService>(
+      create: (_) => AIService(APIConfig.geminiApiKey), // using key from lib/config/api_config.dart
+      child: MyApp(storageService: storageService),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -34,8 +42,10 @@ class MyApp extends StatelessWidget {
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
+          
           return MaterialApp(
-            title: 'FinTrak',
+            debugShowCheckedModeBanner: false,
+            title: 'WiseWallet',
             themeMode: themeProvider.themeMode,
             theme: ThemeData(
               colorScheme: ColorScheme.light(

@@ -1,27 +1,18 @@
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http; // new import
 import '../models/user_profile.dart';
-import '../models/category.dart';  
+import '../models/category.dart';
 import 'package:intl/intl.dart';
+import 'dart:convert';
+import 'dart:io';
 
 class AIService {
-  static const String _basePrompt = '''
-You are FinTrak's AI financial assistant. Your role is to provide personalized financial advice and insights based on the user's financial data. Keep responses concise, practical, and friendly. Use emojis where appropriate to make the conversation engaging.
-
-Key guidelines:
-- Focus on practical, actionable advice based on the user's actual spending data
-- Be encouraging and positive while being realistic about financial situations
-- Maintain a professional yet friendly tone
-- Always reference their actual spending numbers when giving advice
-- Provide specific, actionable steps based on their spending patterns
-- Do not use markdown, bold, italics, or any other formatting, just plain text.
-''';
-
   final String _apiKey;
   final GenerativeModel _model;
 
   AIService(this._apiKey)
       : _model = GenerativeModel(
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.0-flash',  
           apiKey: _apiKey,
         );
 
@@ -115,4 +106,118 @@ Key guidelines:
         .map((entry) => '- ${entry.key.displayName}: £${entry.value.toStringAsFixed(2)}')
         .join('\n');
   }
-} 
+
+  // New method using base64 with HTTP POST to call Gemini Vision API
+  Future<double?> extractReceiptTotal(String imagePath) async {
+    try {
+      // Read image file and encode to base64
+      final bytes = await File(imagePath).readAsBytes();
+      final base64Image = base64Encode(bytes);
+      print("Image encoded: Length = ${base64Image.length}");
+
+      final prompt = '''
+        Extract only the total/final amount from this receipt image. 
+        Return ONLY the numerical value with up to 2 decimal places.
+        Example response: "25.99"
+        Do not include any currency symbols or text.
+      ''';
+      print("Prompt: $prompt");
+
+      // Build the JSON payload per Gemini API specifications
+      final requestBody = {
+        "contents": [
+          {
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "image/jpeg",
+                  "data": base64Image
+                }
+              },
+              {"text": prompt}
+            ]
+          }
+        ]
+      };
+      final requestJson = jsonEncode(requestBody);
+      print("Request JSON: $requestJson");
+
+      // Construct URL with API key
+      final url = Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$_apiKey');
+      print("Request URL: $url");
+
+      final httpResponse = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: requestJson,
+      );
+
+      print("HTTP status: ${httpResponse.statusCode}");
+      print("HTTP body: ${httpResponse.body}");
+
+      if (httpResponse.statusCode == 200) {
+        final decoded = jsonDecode(httpResponse.body);
+        print("Decoded response: $decoded");
+        // Adjust extraction based on the actual response structure:
+        final responseText = decoded["candidates"]?[0]?["content"] as String? ?? '';
+        print("Extracted response text: $responseText");
+        final amount = double.tryParse(responseText.trim());
+        print("Parsed amount: $amount");
+        return amount;
+      }
+      print("Non-200 HTTP response");
+      return null;
+    } catch (e, stackTrace) {
+      print("Error in extractReceiptTotal: $e");
+      print(stackTrace);
+      return null;
+    }
+  }
+  
+  // New method that accepts a base64 string (for web environments)
+  Future<double?> extractReceiptTotalFromBase64(String base64Image) async {
+    try {
+      final prompt = '''
+        Extract only the total/final amount from this receipt image. 
+        Return ONLY the numerical value with up to 2 decimal places.
+        Example response: "25.99"
+        Do not include any currency symbols or text.
+      ''';
+
+      final requestBody = {
+        "contents": [
+          {
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "image/jpeg",
+                  "data": base64Image
+                }
+              },
+              {"text": prompt}
+            ]
+          }
+        ]
+      };
+
+      final url = Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$_apiKey');
+
+      final httpResponse = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(requestBody),
+      );
+
+      if (httpResponse.statusCode == 200) {
+        final decoded = jsonDecode(httpResponse.body);
+        final responseText = decoded["candidates"]?[0]?["content"] as String? ?? '';
+        return double.tryParse(responseText.trim());
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+}

@@ -241,6 +241,9 @@ class ChatMessage extends StatelessWidget {
     required this.timestamp,
   });
 
+
+// === CHAT BUBBLE ===
+
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;

@@ -1,5 +1,5 @@
-name: fintrak
-description: "A new Flutter project."
+name: wisewallet
+description: "Uni Flutter Project"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -43,6 +43,7 @@ dependencies:
   google_generative_ai: ^0.2.0
   image_picker: ^1.0.7
   fl_chart: ^0.66.2
+  permission_handler:
 
 dev_dependencies:
   flutter_test:

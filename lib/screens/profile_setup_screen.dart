@@ -6,6 +6,7 @@ import '../services/expense_provider.dart';
 import '../models/user_profile.dart';
 import '../screens/main_app_scaffold.dart';
 import 'package:intl/intl.dart';
+import 'package:hive/hive.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   const ProfileSetupScreen({super.key});
@@ -93,6 +94,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           : double.parse(_budgetController.text.trim()),
         savingGoal: null, // Setting to null as it's optional and not provided in this screen
       );
+      
+      var profileBox = await Hive.openBox('userProfile');
+      await profileBox.put('userProfileData', {
+        'name': userProfile.name,
+        'monthlyIncome': userProfile.monthlyIncome,
+        'currency': userProfile.currency,
+        'recurringIncomeDate': userProfile.recurringIncomeDate.toIso8601String(),
+        'monthlyBudget': userProfile.monthlyBudget,
+        'savingGoal': userProfile.savingGoal,
+      });
+      await profileBox.close();
       
       // Save user profile
       final provider = Provider.of<ExpenseProvider>(context, listen: false);
@@ -301,4 +313,4 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       ),
     );
   }
-} 
+}
