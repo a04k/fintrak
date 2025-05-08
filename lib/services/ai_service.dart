@@ -56,7 +56,7 @@ class AIService {
       ''';
 
       final prompt = '''
-        You are a helpful financial assistant. Use the following context to provide personalized financial advice.
+        You are a helpful financial assistant within the WiseWallet app. Use the following context to provide personalized financial advice.
         Consider the time remaining until the next salary date when giving spending advice.
         If spending is too high for the remaining days, express concern and suggest immediate actions.
         
