@@ -1,4 +1,8 @@
+import 'dart:convert';
+
+import 'package:fintrak/services/expense_provider.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:provider/provider.dart';
 import '../models/user_profile.dart';
 import '../models/category.dart';  
 import 'package:intl/intl.dart';
@@ -81,6 +85,74 @@ Key guidelines:
       return 'I apologize, but I encountered an error while processing your request. Please try again later.';
     }
   }
+  Future<List<Map<String, dynamic>>> getInsights() async {
+  try {
+
+    String prompt = '''
+    You are a financial assistant integrated into a money tracking app. Your role is to analyze user financial data and provide personalized suggestions.
+
+    Generate a structured JSON response with 3-5 suggestions. Each suggestion should include:
+    - type: One of ["saving", "budget", "alert", "insight"]
+    - title: A brief, catchy title (max 50 chars)
+    - description: Detailed explanation (max 150 chars)
+    - actionText: (Optional) Call-to-action text
+    
+    Format your entire response as a valid JSON array of suggestion objects. Do not include any explanatory text outside the JSON structure.
+    
+    Example response format:
+    [
+      {
+        "type": "saving",
+        "title": "Coffee savings opportunity",
+        "description": "You spent £42 on coffee this month. Consider brewing at home to save up to £30.",
+        "actionText": "View coffee expenses"
+      },
+      {
+        "type": "budget",
+        "title": "Grocery budget alert",
+        "description": "You've used 85% of your grocery budget with 10 days remaining this month.",
+        "actionText": "Adjust budget"
+      }
+    ]
+    ''';
+    
+    final GenerateContentResponse response = await _model.generateContent([Content.text(prompt)]);
+    GenerateContentResponse responseText = response;
+    
+
+    
+    // Parse the JSON response into a List of Map objects
+    List<dynamic> parsedJson = jsonDecode(responseText.toString());
+    List<Map<String, dynamic>> insights = parsedJson.map((item) => 
+      Map<String, dynamic>.from(item)
+    ).toList();
+    
+    return insights;
+  } catch (e) {
+    print('Error generating AI response: $e');
+    // Return fallback insights in case of error
+    return [
+      {
+        "type": "budget",
+        "title": "Stay on Budget",
+        "description": "You're doing a great job managing your finances. Keep up the good work!",
+        "actionText": "View Budget Details"
+      },
+      {
+        "type": "insight",
+        "title": "Spending Patterns",
+        "description": "Consider reviewing your spending habits to identify areas where you can save money.",
+        "actionText": "Analyze Categories"
+      },
+      {
+        "type": "saving",
+        "title": "Savings Opportunity",
+        "description": "Consider setting aside a portion of your income for emergencies.",
+        "actionText": "Set Saving Goals"
+      }
+    ];
+  }
+}
 
   DateTime _getNextSalaryDate(DateTime currentDate, DateTime salaryDate) {
     var nextSalaryDate = DateTime(
@@ -116,3 +188,5 @@ Key guidelines:
         .join('\n');
   }
 } 
+
+

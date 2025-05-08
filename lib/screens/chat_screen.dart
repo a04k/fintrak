@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/expense_provider.dart';
 import '../services/ai_service.dart';
-import '../config/api_config.dart';
+// import '../config/api_config.dart';
 import 'package:intl/intl.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -22,7 +22,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _aiService = AIService(APIConfig.geminiApiKey);
+    _aiService = AIService("AIzaSyBpoglmysw9SdQzEkFNmvZq7Ud-Dtz_Gjs");
     _sendInitialMessage();
   }
 
