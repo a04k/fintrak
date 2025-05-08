@@ -20,7 +20,7 @@ void main() async {
   await storageService.init();
   
   // Wrap MyApp within a Provider for AIService using the API key from config
-  runApp(
+  runApp( 
     Provider<AIService>(
       create: (_) => AIService(APIConfig.geminiApiKey), // using key from lib/config/api_config.dart
       child: MyApp(storageService: storageService),
