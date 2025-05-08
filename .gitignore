@@ -46,3 +46,6 @@ app.*.map.json
 
 # API keys
 api_config.dart
+/web
+/web/*
+/windows

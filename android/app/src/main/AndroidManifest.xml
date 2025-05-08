@@ -1,8 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.CAMERA" />
     <application
         android:label="fintrak"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- impeller -->
+        <!-- <meta-data android:name="io.flutter.embedding.android.DisableImpeller" android:value="true"/> -->
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
