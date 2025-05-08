@@ -5,16 +5,16 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter/foundation.dart'; // add this import
-import 'dart:convert'; // add this import
-// For web, import dart:html
-// Only include this import when targeting web:
-import 'dart:html' as html;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
+// Conditionally import dart:html only for web
 import '../models/category.dart';
 import '../models/expense.dart';
 import '../services/expense_provider.dart';
-import '../services/ai_service.dart';  // Add this import
+import '../services/ai_service.dart';
+
+// Create a platform-specific helper
+import '../services/platform_helper.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   final Expense? expense;
@@ -76,7 +76,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
   }
   
-  Future<void> _processReceipt(File imageFile) async {
+  Future<void> _processReceipt(dynamic imageFile) async {
     try {
       setState(() {
         _isSubmitting = true;
@@ -85,8 +85,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       // Get AI service instance
       final aiService = Provider.of<AIService>(context, listen: false);
       
-      // Extract total from receipt
-      final total = await aiService.extractReceiptTotal(imageFile.path);
+      double? total;
+      
+      if (kIsWeb) {
+        // For web, we'll use the platform helper
+        final base64Image = await PlatformHelper.getBase64FromWebFile(imageFile);
+        total = await aiService.extractReceiptTotalFromBase64(base64Image);
+      } else {
+        // For mobile, we have a real File
+        total = await aiService.extractReceiptTotal((imageFile as File).path);
+      }
       
       if (total != null) {
         // Create and add expense directly
@@ -144,52 +152,21 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   Future<void> _getImage(ImageSource source) async {
     if (kIsWeb) {
-      // Use dart:html FileUploadInputElement for web
-      final uploadInput = html.FileUploadInputElement()..accept = 'image/*';
-      uploadInput.click();
-      uploadInput.onChange.listen((event) async {
-        final files = uploadInput.files;
-        if (files != null && files.isNotEmpty) {
-          final file = files.first;
-          final reader = html.FileReader();
-          reader.readAsArrayBuffer(file);
-          reader.onLoadEnd.listen((event) async {
-            final imageData = reader.result as Uint8List;
-            final base64Image = base64Encode(imageData);
-            final aiService = Provider.of<AIService>(context, listen: false);
-            final total = await aiService.extractReceiptTotalFromBase64(base64Image);
-            if (total != null) {
-              setState(() {
-                _amountController.text = total.toStringAsFixed(2);
-                _selectedCategory = ExpenseCategory.shopping;
-                _descriptionController.text = 'Scanned Receipt';
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Receipt processed and expense added')),
-              );
-              final expense = Expense(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                description: 'Scanned Receipt',
-                amount: total,
-                date: DateTime.now(),
-                category: ExpenseCategory.shopping,
-              );
-              final expenseProvider = Provider.of<ExpenseProvider>(context, listen: false);
-              final success = await expenseProvider.addExpense(expense);
-              if(success && mounted){
-                Navigator.of(context).pop();
-              }
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Could not extract total from receipt'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-          });
+      try {
+        final pickedFile = await PlatformHelper.pickWebImage();
+        if (pickedFile != null) {
+          await _processReceipt(pickedFile);
         }
-      });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to process image: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     } else {
       // Existing mobile implementation
       try {
@@ -261,11 +238,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       try {
         // Get amount from text field
         final amountText = _amountController.text.trim();
-        final amount = double.parse(amountText) ?? 0.0;
+        final amount = double.parse(amountText);
         
         // Create expense object
         final expense = Expense(
-          id: widget.expense?.id ?? DateTime.now().millisecondsSinceEpoch.toString(), // ay kalam
+          id: widget.expense?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
           description: _descriptionController.text.trim(),
           amount: amount,
           date: _selectedDate,
@@ -352,7 +329,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_receiptImage != null) ...[
+                if (_receiptImage != null && !kIsWeb) ...[
                   Container(
                     height: 200,
                     decoration: BoxDecoration(
@@ -571,9 +548,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
-                        : const Text(
-                            'Add Expense',
-                            style: TextStyle(
+                        : Text(
+                            widget.isEditing ? 'Update Expense' : 'Add Expense',
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
