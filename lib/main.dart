@@ -137,7 +137,7 @@ class LoadingScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // App logo or icon
+            // App logo
             Icon(
               Icons.account_balance_wallet,
               size: 80,
@@ -145,7 +145,7 @@ class LoadingScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             const Text(
-              'FinTrak',
+              'WiseWallet',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,

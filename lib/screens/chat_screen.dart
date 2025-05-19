@@ -139,7 +139,7 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: backgroundColor,
       appBar: AppBar(
         title: Text(
-          'FinTrak Assistant',
+          'WiseWallet Assistant',
           style: TextStyle(color: textColor),
         ),
         backgroundColor: backgroundColor,
