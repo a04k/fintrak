@@ -1,4 +1,4 @@
-# fintrak
+# wisewallet
 
 A new Flutter project.
 
