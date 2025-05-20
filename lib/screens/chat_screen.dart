@@ -31,7 +31,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final userName = expenseProvider.userProfile?.name ?? "there";
     
     _addBotMessage(
-      "Hi $userName! 👋 I'm your FinTrak AI assistant. I can help you with:\n"
+      "Hi $userName! 👋 I'm your WiseWallet AI assistant. I can help you with:\n"
       "• Analyzing your spending patterns\n"
       "• Providing budget recommendations\n"
       "• Offering savings tips\n"

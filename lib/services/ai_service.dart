@@ -38,7 +38,7 @@ class AIService {
       // Format spending categories
       final formattedCategories = _formatSpendingCategories(spendingByCategory);
 
-      // Create context for the AI
+      // context for the AI
       final context = '''
         User Profile:
         - Monthly Income: £${profile.monthlyIncome}
